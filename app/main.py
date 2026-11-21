@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.health import router as health_router
 from app.core.config import settings
 from app.core.database import close_database_connection
 
@@ -24,6 +25,8 @@ def create_application() -> FastAPI:
         redoc_url="/redoc",
         lifespan=lifespan,  # Importante
     )
+
+    application.include_router(health_router)
 
     return application
 

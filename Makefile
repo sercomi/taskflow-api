@@ -19,7 +19,7 @@ logs:
 	logs -f api
 
 test:
-	pytest -v
+	uv run pytest -v
 
 lint:
 	uv run ruff check .
