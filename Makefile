@@ -4,7 +4,7 @@ up:
 	docker compose \
   -f compose.yml \
   -f compose.dev.yml \
-  up --build
+  up -d --build
 
 down:
 	docker compose \
