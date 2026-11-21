@@ -1,6 +1,16 @@
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.core.config import settings
+from app.core.database import close_database_connection
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
+    yield
+    await close_database_connection()
 
 
 def create_application() -> FastAPI:
@@ -12,6 +22,7 @@ def create_application() -> FastAPI:
         openapi_url="/openapi.json",
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,  # Importante
     )
 
     return application

@@ -13,7 +13,7 @@ dependencies = [
   "fastapi>=0.165.0,<1.0",
   "pydantic>=2.14.4",
   "pydantic-settings>=2.16.3",
-  "sqlalchemy>=2.1.9",
+  "sqlalchemy[asyncio]>=2.0,<3.0",
   "uvicorn[standard]>=0.54.0,<1.0",
 ]
 
@@ -42,3 +42,9 @@ warn_return_any = true
 warn_unused_ignores = true
 no_implicit_optional = true
 exclude = ["migrations/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-ra"
