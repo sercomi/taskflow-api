@@ -1,0 +1,25 @@
+services:
+  api:
+    build:
+      args:
+        INSTALL_DEV: "true"
+    container_name: taskflow-api-dev
+    volumes:
+      - .:/app
+    command:
+      [
+        "python",
+        "-m",
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+      ]
+
+  db:
+    container_name: taskflow-db-dev
+    ports:
+      - "5432:5432"
