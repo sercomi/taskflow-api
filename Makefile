@@ -1,4 +1,4 @@
-.PHONY: up down logs test lint format typecheck check
+.PHONY: up down logs test lint format typecheck check migration migration-auto migrate migration-history
 
 up:
 	docker compose \
@@ -35,3 +35,14 @@ check: lint
 	uv run mypy app/
 	uv run pytest -v
 
+migration:
+	uv run alembic revision -m "$(name)"
+
+migration-auto:
+	uv run alembic revision --autogenerate -m "$(name)"
+
+migrate:
+	uv run alembic upgrade head
+
+migration-history:
+	uv run alembic history
