@@ -9,7 +9,7 @@ from app.models.organization import Organization
 from app.models.organization_member import OrganizationMember
 from app.models.project import Project
 from app.models.user import User
-from app.schemas.project import ProjectCreate
+from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services.organization import (
     _get_active_organization_membership_for_update,
 )
@@ -148,5 +148,61 @@ async def get_project_by_id(
 
     if project is None:
         raise LookupError("Project not found")
+
+    return project
+
+
+async def update_project(
+    session: AsyncSession,
+    organization_id: int,
+    project_id: int,
+    project_data: ProjectUpdate,
+    current_user: User,
+) -> Project:
+    membership = await _get_active_organization_membership_for_update(
+        session,
+        organization_id,
+        current_user.id,
+    )
+
+    if membership is None:
+        raise LookupError("Organization not found")
+
+    project = await session.scalar(
+        select(Project)
+        .where(
+            Project.id == project_id,
+            Project.organization_id == organization_id,
+            Project.is_active.is_(True),
+        )
+        .with_for_update()
+    )
+
+    if project is None:
+        raise LookupError("Project not found")
+
+    update_data = project_data.model_dump(exclude_unset=True)
+
+    if "name" in update_data:
+        new_name = update_data["name"]
+
+        if new_name != project.name:
+            project.name = new_name
+            project.slug = await generate_unique_project_slug(
+                session,
+                organization_id,
+                new_name,
+            )
+
+    if "description" in update_data:
+        project.description = update_data["description"]
+
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise
+
+    await session.refresh(project)
 
     return project
