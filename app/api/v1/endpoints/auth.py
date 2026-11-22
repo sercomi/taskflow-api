@@ -38,7 +38,7 @@ async def register(
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="User already exists",
+            detail="Email already registered",
         ) from exc
 
     return UserResponse.model_validate(user)
@@ -65,10 +65,10 @@ async def login(
 
     if not user.is_active:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-
     access_token = create_access_token(subject=str(user.id))
 
     return TokenResponse(access_token=access_token)

@@ -150,7 +150,7 @@ def test_register_user_integrity_error(
     )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "User already exists"
+    assert response.json()["detail"] == "Email already registered"
     mock_session.rollback.assert_awaited_once()
 
 
@@ -275,8 +275,8 @@ def test_login_inactive_user(
             },
         )
 
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Inactive user"
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
 
 
 def test_login_invalid_email(
@@ -308,3 +308,17 @@ def test_login_missing_password(
 
     assert response.status_code == 422
     mock_session.execute.assert_not_awaited()
+
+
+def test_login_rejects_password_longer_than_128_characters(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "test@example.com",
+            "password": "a" * 129,
+        },
+    )
+
+    assert response.status_code == 422

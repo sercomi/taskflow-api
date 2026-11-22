@@ -53,8 +53,8 @@ async def update_user(
         if existing_user is not None:
             raise ValueError("Username already registered")
 
-    for field, value in update_data.items():
-        setattr(user, field, value)
+    if "username" in update_data:
+        user.username = update_data["username"]
 
     await session.commit()
     await session.refresh(user)

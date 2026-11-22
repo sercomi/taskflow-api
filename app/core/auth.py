@@ -29,30 +29,18 @@ async def get_current_user(
     payload = decode_access_token(credentials.credentials)
 
     if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise _unauthorized_exception()
 
     subject = payload.get("sub")
 
     if not isinstance(subject, str) or not subject.isdigit():
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise _unauthorized_exception()
 
     result = await session.execute(select(User).where(User.id == int(subject)))
     user = result.scalar_one_or_none()
 
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise _unauthorized_exception()
 
     if not user.is_active:
         raise HTTPException(
@@ -61,3 +49,11 @@ async def get_current_user(
         )
 
     return user
+
+
+def _unauthorized_exception() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid authentication credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )

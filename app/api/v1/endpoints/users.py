@@ -31,7 +31,7 @@ async def update_profile(
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
+            detail="Username already registered",
         ) from exc
     except IntegrityError as exc:
         await session.rollback()
