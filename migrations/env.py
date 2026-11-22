@@ -1,7 +1,9 @@
 import asyncio
 from logging.config import fileConfig
 
+import app.models  # noqa: F401
 from alembic import context
+from app.core.base import Base
 from app.core.config import settings
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
@@ -17,7 +19,7 @@ config.set_main_option(
     settings.database_url.render_as_string(hide_password=False),
 )
 
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
