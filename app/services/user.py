@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.models.user import User
-from app.schemas.user import UserCreate
+from app.schemas.user import UserCreate, UserUpdate
 
 
 async def get_user_by_email(
@@ -25,6 +25,37 @@ async def create_user(
     )
 
     session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
+    return user
+
+
+async def update_user(
+    session: AsyncSession,
+    user: User,
+    user_data: UserUpdate,
+) -> User:
+    update_data = user_data.model_dump(exclude_unset=True)
+
+    username = update_data.get("username")
+
+    if username is not None:
+        result = await session.execute(
+            select(User).where(
+                User.username == username,
+                User.id != user.id,
+            )
+        )
+
+        existing_user = result.scalar_one_or_none()
+
+        if existing_user is not None:
+            raise ValueError("Username already registered")
+
+    for field, value in update_data.items():
+        setattr(user, field, value)
+
     await session.commit()
     await session.refresh(user)
 

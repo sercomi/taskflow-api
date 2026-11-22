@@ -106,7 +106,7 @@ def test_decode_access_token_rejects_manipulated_token() -> None:
 def test_decode_access_token_rejects_different_secret() -> None:
     token = jwt.encode(
         {"sub": "123"},
-        "a-different-secret-key",
+        "another-secret-key-with-at-least-32-bytes",
         algorithm=settings.jwt_algorithm,
     )
 

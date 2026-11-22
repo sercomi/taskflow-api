@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -8,7 +10,9 @@ class UserCreate(BaseModel):
 
 
 class UserResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(
+        from_attributes=True,
+    )
 
     id: int
     email: EmailStr
@@ -24,3 +28,14 @@ class UserLogin(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class UserUpdate(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(
+        extra="forbid",
+    )
+
+    username: str = Field(
+        min_length=3,
+        max_length=50,
+    )
