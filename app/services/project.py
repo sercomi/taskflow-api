@@ -5,6 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.organization import Organization
+from app.models.organization_member import OrganizationMember
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.project import ProjectCreate
@@ -82,5 +84,69 @@ async def create_project(
         raise
 
     await session.refresh(project)
+
+    return project
+
+
+async def get_organization_projects(
+    session: AsyncSession,
+    organization_id: int,
+    current_user: User,
+) -> list[Project]:
+    membership = await session.scalar(
+        select(OrganizationMember.id)
+        .join(
+            Organization,
+            Organization.id == OrganizationMember.organization_id,
+        )
+        .where(
+            OrganizationMember.organization_id == organization_id,
+            OrganizationMember.user_id == current_user.id,
+            Organization.is_active.is_(True),
+        )
+    )
+
+    if membership is None:
+        raise LookupError("Organization not found")
+
+    result = await session.scalars(
+        select(Project)
+        .where(
+            Project.organization_id == organization_id,
+            Project.is_active.is_(True),
+        )
+        .order_by(Project.created_at.desc())
+    )
+
+    return list(result.all())
+
+
+async def get_project_by_id(
+    session: AsyncSession,
+    organization_id: int,
+    project_id: int,
+    current_user: User,
+) -> Project:
+    project = await session.scalar(
+        select(Project)
+        .join(
+            OrganizationMember,
+            OrganizationMember.organization_id == Project.organization_id,
+        )
+        .join(
+            Organization,
+            Organization.id == OrganizationMember.organization_id,
+        )
+        .where(
+            Project.id == project_id,
+            Project.organization_id == organization_id,
+            Project.is_active.is_(True),
+            Organization.is_active.is_(True),
+            OrganizationMember.user_id == current_user.id,
+        )
+    )
+
+    if project is None:
+        raise LookupError("Project not found")
 
     return project
