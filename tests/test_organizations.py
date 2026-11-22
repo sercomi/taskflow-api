@@ -1,11 +1,11 @@
 from collections.abc import AsyncGenerator, Generator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from app.api.v1.endpoints.organizations import router
 from app.core.auth import get_current_user
 from app.core.database import get_session
-from app.models.organization import OrganizationRole
+from app.models.organization import Organization, OrganizationRole
 from app.models.user import User
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -183,3 +183,151 @@ def test_create_organization_integrity_error(
 
     mock_session.commit.assert_awaited_once()
     mock_session.rollback.assert_awaited_once()
+
+
+def test_list_organizations_success(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    organizations = [
+        Organization(
+            id=1,
+            name="Acme Corporation",
+            slug="acme-corporation",
+            description="Acme organization",
+            is_active=True,
+        ),
+        Organization(
+            id=2,
+            name="Beta Corporation",
+            slug="beta-corporation",
+            description=None,
+            is_active=True,
+        ),
+    ]
+
+    mock_result = MagicMock()
+    mock_result.all.return_value = organizations
+    mock_session.scalars.return_value = mock_result
+
+    response = client.get("/api/v1/organizations")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 2
+    assert response.json()[0]["name"] == "Acme Corporation"
+    assert response.json()[1]["name"] == "Beta Corporation"
+
+    mock_session.scalars.assert_awaited_once()
+
+
+def test_list_organizations_empty(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    mock_result = MagicMock()
+    mock_result.all.return_value = []
+    mock_session.scalars.return_value = mock_result
+
+    response = client.get("/api/v1/organizations")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+    mock_session.scalars.assert_awaited_once()
+
+
+def test_list_organizations_excludes_inactive(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    organizations = [
+        Organization(
+            id=1,
+            name="Acme Corporation",
+            slug="acme-corporation",
+            description=None,
+            is_active=True,
+        ),
+    ]
+
+    mock_result = MagicMock()
+    mock_result.all.return_value = organizations
+    mock_session.scalars.return_value = mock_result
+
+    response = client.get("/api/v1/organizations")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["is_active"] is True
+
+
+def test_get_organization_success(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    organization = Organization(
+        id=1,
+        name="Acme Corporation",
+        slug="acme-corporation",
+        description="Acme organization",
+        is_active=True,
+    )
+
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = organization
+    mock_session.execute.return_value = mock_result
+
+    response = client.get("/api/v1/organizations/1")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": 1,
+        "name": "Acme Corporation",
+        "slug": "acme-corporation",
+        "description": "Acme organization",
+        "is_active": True,
+    }
+
+    mock_session.execute.assert_awaited_once()
+
+
+def test_get_organization_not_found(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    response = client.get("/api/v1/organizations/999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Organization not found"
+
+
+def test_get_organization_not_member(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    response = client.get("/api/v1/organizations/2")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Organization not found"
+
+
+def test_get_organization_inactive(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = mock_result
+
+    response = client.get("/api/v1/organizations/3")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Organization not found"

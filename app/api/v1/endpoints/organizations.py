@@ -8,7 +8,11 @@ from app.core.auth import get_current_user
 from app.core.database import get_session
 from app.models.user import User
 from app.schemas.organization import OrganizationCreate, OrganizationResponse
-from app.services.organization import create_organization
+from app.services.organization import (
+    create_organization,
+    get_user_organization,
+    get_user_organizations,
+)
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
 
@@ -35,5 +39,45 @@ async def create_organization_endpoint(
             status_code=status.HTTP_409_CONFLICT,
             detail="Could not create organization",
         ) from None
+
+    return OrganizationResponse.model_validate(organization)
+
+
+@router.get(
+    "",
+    response_model=list[OrganizationResponse],
+)
+async def list_organizations_endpoint(
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[OrganizationResponse]:
+    organizations = await get_user_organizations(
+        session=session,
+        user=current_user,
+    )
+
+    return [OrganizationResponse.model_validate(organization) for organization in organizations]
+
+
+@router.get(
+    "/{organization_id}",
+    response_model=OrganizationResponse,
+)
+async def get_organization_endpoint(
+    organization_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OrganizationResponse:
+    organization = await get_user_organization(
+        session=session,
+        organization_id=organization_id,
+        user=current_user,
+    )
+
+    if organization is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organization not found",
+        )
 
     return OrganizationResponse.model_validate(organization)

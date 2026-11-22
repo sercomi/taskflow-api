@@ -62,3 +62,38 @@ async def create_organization(
     await session.refresh(organization)
 
     return organization
+
+
+async def get_user_organizations(
+    session: AsyncSession,
+    user: User,
+) -> list[Organization]:
+    result = await session.scalars(
+        select(Organization)
+        .join(OrganizationMember)
+        .where(
+            OrganizationMember.user_id == user.id,
+            Organization.is_active.is_(True),
+        )
+        .order_by(Organization.name)
+    )
+
+    return list(result.all())
+
+
+async def get_user_organization(
+    session: AsyncSession,
+    organization_id: int,
+    user: User,
+) -> Organization | None:
+    result = await session.execute(
+        select(Organization)
+        .join(OrganizationMember)
+        .where(
+            Organization.id == organization_id,
+            OrganizationMember.user_id == user.id,
+            Organization.is_active.is_(True),
+        )
+    )
+
+    return result.scalar_one_or_none()
