@@ -206,3 +206,40 @@ async def update_project(
     await session.refresh(project)
 
     return project
+
+
+async def deactivate_project(
+    session: AsyncSession,
+    organization_id: int,
+    project_id: int,
+    current_user: User,
+) -> None:
+    membership = await _get_active_organization_membership_for_update(
+        session,
+        organization_id,
+        current_user.id,
+    )
+
+    if membership is None:
+        raise LookupError("Organization not found")
+
+    project = await session.scalar(
+        select(Project)
+        .where(
+            Project.id == project_id,
+            Project.organization_id == organization_id,
+            Project.is_active.is_(True),
+        )
+        .with_for_update()
+    )
+
+    if project is None:
+        raise LookupError("Project not found")
+
+    project.is_active = False
+
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise

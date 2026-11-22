@@ -780,3 +780,165 @@ def test_update_project_invalid_payload_endpoint(
     )
 
     assert response.status_code == 422
+
+
+async def test_deactivate_project_success(
+    mock_session: AsyncMock,
+    current_user: User,
+    sample_project: Project,
+    owner_membership: OrganizationMember,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        project_service,
+        "_get_active_organization_membership_for_update",
+        AsyncMock(return_value=owner_membership),
+    )
+    mock_session.scalar.return_value = sample_project
+
+    await project_service.deactivate_project(
+        mock_session,
+        1,
+        1,
+        current_user,
+    )
+
+    assert sample_project.is_active is False
+    mock_session.commit.assert_awaited_once()
+
+
+async def test_deactivate_project_rejects_non_member(
+    mock_session: AsyncMock,
+    current_user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        project_service,
+        "_get_active_organization_membership_for_update",
+        AsyncMock(return_value=None),
+    )
+
+    with pytest.raises(LookupError, match="Organization not found"):
+        await project_service.deactivate_project(
+            mock_session,
+            1,
+            1,
+            current_user,
+        )
+
+    mock_session.scalar.assert_not_awaited()
+    mock_session.commit.assert_not_awaited()
+
+
+async def test_deactivate_project_not_found(
+    mock_session: AsyncMock,
+    current_user: User,
+    owner_membership: OrganizationMember,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        project_service,
+        "_get_active_organization_membership_for_update",
+        AsyncMock(return_value=owner_membership),
+    )
+    mock_session.scalar.return_value = None
+
+    with pytest.raises(LookupError, match="Project not found"):
+        await project_service.deactivate_project(
+            mock_session,
+            1,
+            999,
+            current_user,
+        )
+
+    mock_session.commit.assert_not_awaited()
+
+
+async def test_deactivate_project_rolls_back_on_integrity_error(
+    mock_session: AsyncMock,
+    current_user: User,
+    sample_project: Project,
+    owner_membership: OrganizationMember,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        project_service,
+        "_get_active_organization_membership_for_update",
+        AsyncMock(return_value=owner_membership),
+    )
+    mock_session.scalar.return_value = sample_project
+    mock_session.commit.side_effect = IntegrityError(
+        "UPDATE",
+        {},
+        Exception("database error"),
+    )
+
+    with pytest.raises(IntegrityError):
+        await project_service.deactivate_project(
+            mock_session,
+            1,
+            1,
+            current_user,
+        )
+
+    mock_session.rollback.assert_awaited_once()
+
+
+def test_deactivate_project_endpoint_success(
+    client: TestClient,
+    mock_session: AsyncMock,
+    current_user: User,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        projects_endpoint,
+        "deactivate_project",
+        service,
+    )
+
+    response = client.delete("/api/v1/organizations/1/projects/1")
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+    service.assert_awaited_once_with(
+        session=mock_session,
+        organization_id=1,
+        project_id=1,
+        current_user=current_user,
+    )
+
+
+def test_deactivate_project_endpoint_not_found(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = AsyncMock(side_effect=LookupError("Project not found"))
+    monkeypatch.setattr(
+        projects_endpoint,
+        "deactivate_project",
+        service,
+    )
+
+    response = client.delete("/api/v1/organizations/1/projects/999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Project not found"}
+
+
+def test_deactivate_project_endpoint_organization_not_found(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = AsyncMock(side_effect=LookupError("Organization not found"))
+    monkeypatch.setattr(
+        projects_endpoint,
+        "deactivate_project",
+        service,
+    )
+
+    response = client.delete("/api/v1/organizations/999/projects/1")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Organization not found"}

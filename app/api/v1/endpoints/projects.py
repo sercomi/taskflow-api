@@ -8,6 +8,7 @@ from app.core.database import get_session
 from app.models.user import User
 from app.schemas.project import ProjectResponse, ProjectUpdate
 from app.services.project import (
+    deactivate_project,
     get_organization_projects,
     get_project_by_id,
     update_project,
@@ -98,3 +99,33 @@ async def update_project_endpoint(
         ) from None
 
     return ProjectResponse.model_validate(project)
+
+
+@router.delete(
+    "/{project_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def deactivate_project_endpoint(
+    organization_id: int,
+    project_id: int,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> None:
+    try:
+        await deactivate_project(
+            session=session,
+            organization_id=organization_id,
+            project_id=project_id,
+            current_user=current_user,
+        )
+    except LookupError as exc:
+        if str(exc) == "Organization not found":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Organization not found",
+            ) from None
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        ) from None
