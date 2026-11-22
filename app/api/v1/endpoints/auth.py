@@ -3,7 +3,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.schemas.user import UserCreate, UserResponse
+from app.core.security import (
+    create_access_token,
+    verify_password,
+)
+from app.schemas.user import TokenResponse, UserCreate, UserLogin, UserResponse
 from app.services.user import create_user, get_user_by_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -38,3 +42,33 @@ async def register(
         ) from exc
 
     return UserResponse.model_validate(user)
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login(
+    credentials: UserLogin,
+    session: AsyncSession = Depends(get_session),  # noqa: B008
+) -> TokenResponse:
+    email = str(credentials.email).lower()
+
+    user = await get_user_by_email(session, email)
+
+    if user is None or not verify_password(
+        credentials.password,
+        user.hashed_password,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user",
+        )
+
+    access_token = create_access_token(subject=str(user.id))
+
+    return TokenResponse(access_token=access_token)

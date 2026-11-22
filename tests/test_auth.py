@@ -1,7 +1,9 @@
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import jwt
 import pytest
+from app.core.config import settings
 from app.core.database import get_session
 from app.main import create_application
 from app.models.user import User
@@ -150,3 +152,159 @@ def test_register_user_integrity_error(
     assert response.status_code == 409
     assert response.json()["detail"] == "User already exists"
     mock_session.rollback.assert_awaited_once()
+
+
+def test_login_success(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    user = User(
+        id=1,
+        email="test@example.com",
+        username="testuser",
+        hashed_password="hashed-password",
+        is_active=True,
+    )
+
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = user
+    mock_session.execute.return_value = result
+
+    with patch(
+        "app.api.v1.endpoints.auth.verify_password",
+        return_value=True,
+    ):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "test@example.com",
+                "password": "StrongPassword123!",
+            },
+        )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["token_type"] == "bearer"
+    assert "access_token" in data
+
+    payload = jwt.decode(
+        data["access_token"],
+        settings.jwt_secret_key,
+        algorithms=[settings.jwt_algorithm],
+    )
+
+    assert payload["sub"] == "1"
+
+
+def test_login_user_not_found(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = result
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "unknown@example.com",
+            "password": "StrongPassword123!",
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
+
+
+def test_login_invalid_password(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    user = User(
+        id=1,
+        email="test@example.com",
+        hashed_password="hashed-password",
+        is_active=True,
+    )
+
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = user
+    mock_session.execute.return_value = result
+
+    with patch(
+        "app.api.v1.endpoints.auth.verify_password",
+        return_value=False,
+    ):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "test@example.com",
+                "password": "WrongPassword123!",
+            },
+        )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid email or password"
+
+
+def test_login_inactive_user(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    user = User(
+        id=1,
+        email="test@example.com",
+        hashed_password="hashed-password",
+        is_active=False,
+    )
+
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = user
+    mock_session.execute.return_value = result
+
+    with patch(
+        "app.api.v1.endpoints.auth.verify_password",
+        return_value=True,
+    ):
+        response = client.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "test@example.com",
+                "password": "StrongPassword123!",
+            },
+        )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Inactive user"
+
+
+def test_login_invalid_email(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "invalid-email",
+            "password": "StrongPassword123!",
+        },
+    )
+
+    assert response.status_code == 422
+    mock_session.execute.assert_not_awaited()
+
+
+def test_login_missing_password(
+    client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "test@example.com",
+        },
+    )
+
+    assert response.status_code == 422
+    mock_session.execute.assert_not_awaited()

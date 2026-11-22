@@ -14,3 +14,13 @@ class UserResponse(BaseModel):
     email: EmailStr
     username: str | None
     is_active: bool
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
