@@ -1,12 +1,8 @@
-from collections.abc import AsyncGenerator, Generator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from app.api.v1.endpoints import organizations as organizations_endpoint
-from app.api.v1.endpoints.organizations import router
-from app.core.auth import get_current_user
-from app.core.database import get_session
 from app.models.organization import Organization, OrganizationRole
 from app.models.user import User
 from app.services.exceptions import (
@@ -16,15 +12,8 @@ from app.services.exceptions import (
     SelfRemovalError,
     UserNotFoundError,
 )
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
-
-@pytest.fixture
-def mock_session() -> AsyncMock:
-    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -38,42 +27,19 @@ def current_user() -> User:
     )
 
 
-@pytest.fixture
-def client(
-    mock_session: AsyncMock,
-    current_user: User,
-) -> Generator[TestClient, None, None]:
-    application = FastAPI()
-    application.include_router(router, prefix="/api/v1")
-
-    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
-        yield mock_session
-
-    async def override_get_current_user() -> User:
-        return current_user
-
-    application.dependency_overrides[get_session] = override_get_session
-    application.dependency_overrides[get_current_user] = override_get_current_user
-
-    with TestClient(application) as test_client:
-        yield test_client
-
-    application.dependency_overrides.clear()
-
-
 def test_create_organization_success(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     mock_session.scalar.return_value = None
 
-    async def refresh_organization(organization) -> None:
+    async def refresh_organization(organization: Organization) -> None:
         organization.id = 1
         organization.is_active = True
 
     mock_session.refresh.side_effect = refresh_organization
 
-    response = client.post(
+    response = organizations_client.post(
         "/api/v1/organizations",
         json={
             "name": "Acme Corporation",
@@ -96,18 +62,18 @@ def test_create_organization_success(
 
 
 def test_create_organization_assigns_owner(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     mock_session.scalar.return_value = None
 
-    async def refresh_organization(organization) -> None:
+    async def refresh_organization(organization: Organization) -> None:
         organization.id = 1
         organization.is_active = True
 
     mock_session.refresh.side_effect = refresh_organization
 
-    response = client.post(
+    response = organizations_client.post(
         "/api/v1/organizations",
         json={"name": "Acme Corporation"},
     )
@@ -128,18 +94,18 @@ def test_create_organization_assigns_owner(
 
 
 def test_create_organization_generates_unique_slug(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     mock_session.scalar.side_effect = [1, None]
 
-    async def refresh_organization(organization) -> None:
+    async def refresh_organization(organization: Organization) -> None:
         organization.id = 2
         organization.is_active = True
 
     mock_session.refresh.side_effect = refresh_organization
 
-    response = client.post(
+    response = organizations_client.post(
         "/api/v1/organizations",
         json={"name": "Acme Corporation"},
     )
@@ -158,11 +124,11 @@ def test_create_organization_generates_unique_slug(
     ],
 )
 def test_create_organization_invalid_data(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
     payload: dict[str, str],
 ) -> None:
-    response = client.post(
+    response = organizations_client.post(
         "/api/v1/organizations",
         json=payload,
     )
@@ -172,7 +138,7 @@ def test_create_organization_invalid_data(
 
 
 def test_create_organization_integrity_error(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     mock_session.scalar.return_value = None
@@ -182,7 +148,7 @@ def test_create_organization_integrity_error(
         Exception("Unique constraint violation"),
     )
 
-    response = client.post(
+    response = organizations_client.post(
         "/api/v1/organizations",
         json={"name": "Acme Corporation"},
     )
@@ -195,7 +161,7 @@ def test_create_organization_integrity_error(
 
 
 def test_list_organizations_success(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     organizations = [
@@ -219,7 +185,7 @@ def test_list_organizations_success(
     mock_result.all.return_value = organizations
     mock_session.scalars.return_value = mock_result
 
-    response = client.get("/api/v1/organizations")
+    response = organizations_client.get("/api/v1/organizations")
 
     assert response.status_code == 200
     assert len(response.json()) == 2
@@ -230,14 +196,14 @@ def test_list_organizations_success(
 
 
 def test_list_organizations_empty(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     mock_result = MagicMock()
     mock_result.all.return_value = []
     mock_session.scalars.return_value = mock_result
 
-    response = client.get("/api/v1/organizations")
+    response = organizations_client.get("/api/v1/organizations")
 
     assert response.status_code == 200
     assert response.json() == []
@@ -246,7 +212,7 @@ def test_list_organizations_empty(
 
 
 def test_list_organizations_excludes_inactive(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     organizations = [
@@ -263,7 +229,7 @@ def test_list_organizations_excludes_inactive(
     mock_result.all.return_value = organizations
     mock_session.scalars.return_value = mock_result
 
-    response = client.get("/api/v1/organizations")
+    response = organizations_client.get("/api/v1/organizations")
 
     assert response.status_code == 200
     assert len(response.json()) == 1
@@ -271,7 +237,7 @@ def test_list_organizations_excludes_inactive(
 
 
 def test_get_organization_success(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     organization = Organization(
@@ -286,7 +252,7 @@ def test_get_organization_success(
     mock_result.scalar_one_or_none.return_value = organization
     mock_session.execute.return_value = mock_result
 
-    response = client.get("/api/v1/organizations/1")
+    response = organizations_client.get("/api/v1/organizations/1")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -301,49 +267,49 @@ def test_get_organization_success(
 
 
 def test_get_organization_not_found(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute.return_value = mock_result
 
-    response = client.get("/api/v1/organizations/999")
+    response = organizations_client.get("/api/v1/organizations/999")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Organization not found"
 
 
 def test_get_organization_not_member(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute.return_value = mock_result
 
-    response = client.get("/api/v1/organizations/2")
+    response = organizations_client.get("/api/v1/organizations/2")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Organization not found"
 
 
 def test_get_organization_inactive(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute.return_value = mock_result
 
-    response = client.get("/api/v1/organizations/3")
+    response = organizations_client.get("/api/v1/organizations/3")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Organization not found"
 
 
 def test_list_organization_members_success(
-    client: TestClient,
+    organizations_client: TestClient,
     current_user: User,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -361,7 +327,7 @@ def test_list_organization_members_success(
         service,
     )
 
-    response = client.get("/api/v1/organizations/1/members")
+    response = organizations_client.get("/api/v1/organizations/1/members")
 
     assert response.status_code == 200
     assert response.json() == [
@@ -375,7 +341,7 @@ def test_list_organization_members_success(
 
 
 def test_list_organization_members_not_found(
-    client: TestClient,
+    organizations_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = AsyncMock(side_effect=OrganizationNotFoundError("Organization not found"))
@@ -385,13 +351,13 @@ def test_list_organization_members_not_found(
         service,
     )
 
-    response = client.get("/api/v1/organizations/999/members")
+    response = organizations_client.get("/api/v1/organizations/999/members")
 
     assert response.status_code == 404
 
 
 def test_add_organization_member_success(
-    client: TestClient,
+    organizations_client: TestClient,
     current_user: User,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -407,7 +373,7 @@ def test_add_organization_member_success(
         service,
     )
 
-    response = client.post(
+    response = organizations_client.post(
         "/api/v1/organizations/1/members",
         json={"email": "test@example.com"},
     )
@@ -427,7 +393,7 @@ def test_add_organization_member_success(
     ],
 )
 def test_add_organization_member_errors(
-    client: TestClient,
+    organizations_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     exception: Exception,
     expected_status: int,
@@ -439,7 +405,7 @@ def test_add_organization_member_errors(
         service,
     )
 
-    response = client.post(
+    response = organizations_client.post(
         "/api/v1/organizations/1/members",
         json={"email": "newuser@example.com"},
     )
@@ -448,7 +414,7 @@ def test_add_organization_member_errors(
 
 
 def test_update_organization_member_role_success(
-    client: TestClient,
+    organizations_client: TestClient,
     current_user: User,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -464,7 +430,7 @@ def test_update_organization_member_role_success(
         service,
     )
 
-    response = client.patch(
+    response = organizations_client.patch(
         "/api/v1/organizations/1/members/2",
         json={"role": "admin"},
     )
@@ -485,7 +451,7 @@ def test_update_organization_member_role_success(
     ],
 )
 def test_update_organization_member_role_errors(
-    client: TestClient,
+    organizations_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     exception: Exception,
     expected_status: int,
@@ -497,7 +463,7 @@ def test_update_organization_member_role_errors(
         service,
     )
 
-    response = client.patch(
+    response = organizations_client.patch(
         "/api/v1/organizations/1/members/2",
         json={"role": "member"},
     )
@@ -506,10 +472,10 @@ def test_update_organization_member_role_errors(
 
 
 def test_update_organization_member_role_rejects_owner(
-    client: TestClient,
+    organizations_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
-    response = client.patch(
+    response = organizations_client.patch(
         "/api/v1/organizations/1/members/2",
         json={"role": "owner"},
     )
@@ -519,7 +485,7 @@ def test_update_organization_member_role_rejects_owner(
 
 
 def test_remove_organization_member_success(
-    client: TestClient,
+    organizations_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = AsyncMock(return_value=None)
@@ -529,7 +495,7 @@ def test_remove_organization_member_success(
         service,
     )
 
-    response = client.delete("/api/v1/organizations/1/members/2")
+    response = organizations_client.delete("/api/v1/organizations/1/members/2")
 
     assert response.status_code == 204
     assert response.content == b""
@@ -548,7 +514,7 @@ def test_remove_organization_member_success(
     ],
 )
 def test_remove_organization_member_errors(
-    client: TestClient,
+    organizations_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     exception: Exception,
     expected_status: int,
@@ -560,6 +526,6 @@ def test_remove_organization_member_errors(
         service,
     )
 
-    response = client.delete("/api/v1/organizations/1/members/2")
+    response = organizations_client.delete("/api/v1/organizations/1/members/2")
 
     assert response.status_code == expected_status

@@ -14,33 +14,6 @@ from app.services.exceptions import (
     UserNotFoundError,
 )
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
-
-@pytest.fixture
-def mock_session() -> AsyncMock:
-    return AsyncMock(spec=AsyncSession)
-
-
-@pytest.fixture
-def current_user() -> User:
-    return User(
-        id=1,
-        email="owner@example.com",
-        username="owner",
-        hashed_password="hashed-password",
-        is_active=True,
-    )
-
-
-@pytest.fixture
-def owner_membership(current_user: User) -> OrganizationMember:
-    return OrganizationMember(
-        organization_id=1,
-        user_id=1,
-        user=current_user,
-        role=OrganizationRole.OWNER,
-    )
 
 
 @pytest.fixture
@@ -50,6 +23,12 @@ def member_membership() -> OrganizationMember:
         user_id=2,
         role=OrganizationRole.MEMBER,
     )
+
+
+class ConstraintViolationError(Exception):
+    def __init__(self, message: str, constraint_name: str) -> None:
+        super().__init__(message)
+        self.constraint_name = constraint_name
 
 
 @pytest.mark.asyncio
@@ -526,8 +505,10 @@ async def test_add_member_handles_concurrent_duplicate(
         membership_result,
     ]
 
-    original_error = Exception("duplicate key")
-    original_error.constraint_name = "uq_organization_member"
+    original_error = ConstraintViolationError(
+        "duplicate key",
+        constraint_name="uq_organization_member",
+    )
 
     mock_session.commit.side_effect = IntegrityError(
         statement="INSERT INTO organization_members",

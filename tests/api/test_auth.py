@@ -1,39 +1,14 @@
-from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
-import pytest
 from app.core.config import settings
-from app.core.database import get_session
-from app.main import create_application
 from app.models.user import User
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
-
-@pytest.fixture
-def mock_session() -> AsyncMock:
-    return AsyncMock(spec=AsyncSession)
-
-
-@pytest.fixture
-def client(mock_session: AsyncMock) -> TestClient:
-    application = create_application()
-
-    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
-        yield mock_session
-
-    application.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(application) as test_client:
-        yield test_client
-
-    application.dependency_overrides.clear()
 
 
 def test_register_user_success(
-    client: TestClient,
+    auth_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     result = MagicMock()
@@ -46,7 +21,7 @@ def test_register_user_success(
 
     mock_session.refresh.side_effect = refresh_user
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/register",
         json={
             "email": "test@example.com",
@@ -80,7 +55,7 @@ def test_register_user_success(
 
 
 def test_register_user_duplicate_email(
-    client: TestClient,
+    auth_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     result = MagicMock()
@@ -91,7 +66,7 @@ def test_register_user_duplicate_email(
     )
     mock_session.execute.return_value = result
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/register",
         json={
             "email": "test@example.com",
@@ -103,8 +78,8 @@ def test_register_user_duplicate_email(
     assert response.json()["detail"] == "Email already registered"
 
 
-def test_register_user_invalid_email(client: TestClient) -> None:
-    response = client.post(
+def test_register_user_invalid_email(auth_client: TestClient) -> None:
+    response = auth_client.post(
         "/api/v1/auth/register",
         json={
             "email": "invalid-email",
@@ -115,8 +90,8 @@ def test_register_user_invalid_email(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_register_user_short_password(client: TestClient) -> None:
-    response = client.post(
+def test_register_user_short_password(auth_client: TestClient) -> None:
+    response = auth_client.post(
         "/api/v1/auth/register",
         json={
             "email": "test@example.com",
@@ -128,7 +103,7 @@ def test_register_user_short_password(client: TestClient) -> None:
 
 
 def test_register_user_integrity_error(
-    client: TestClient,
+    auth_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     result = MagicMock()
@@ -141,7 +116,7 @@ def test_register_user_integrity_error(
         Exception("Unique constraint violation"),
     )
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/register",
         json={
             "email": "test@example.com",
@@ -155,7 +130,7 @@ def test_register_user_integrity_error(
 
 
 def test_login_success(
-    client: TestClient,
+    auth_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     user = User(
@@ -174,7 +149,7 @@ def test_login_success(
         "app.api.v1.endpoints.auth.verify_password",
         return_value=True,
     ):
-        response = client.post(
+        response = auth_client.post(
             "/api/v1/auth/login",
             json={
                 "email": "test@example.com",
@@ -198,14 +173,14 @@ def test_login_success(
 
 
 def test_login_user_not_found(
-    client: TestClient,
+    auth_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     result = MagicMock()
     result.scalar_one_or_none.return_value = None
     mock_session.execute.return_value = result
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/login",
         json={
             "email": "unknown@example.com",
@@ -218,7 +193,7 @@ def test_login_user_not_found(
 
 
 def test_login_invalid_password(
-    client: TestClient,
+    auth_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     user = User(
@@ -236,7 +211,7 @@ def test_login_invalid_password(
         "app.api.v1.endpoints.auth.verify_password",
         return_value=False,
     ):
-        response = client.post(
+        response = auth_client.post(
             "/api/v1/auth/login",
             json={
                 "email": "test@example.com",
@@ -249,7 +224,7 @@ def test_login_invalid_password(
 
 
 def test_login_inactive_user(
-    client: TestClient,
+    auth_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     user = User(
@@ -267,7 +242,7 @@ def test_login_inactive_user(
         "app.api.v1.endpoints.auth.verify_password",
         return_value=True,
     ):
-        response = client.post(
+        response = auth_client.post(
             "/api/v1/auth/login",
             json={
                 "email": "test@example.com",
@@ -280,10 +255,10 @@ def test_login_inactive_user(
 
 
 def test_login_invalid_email(
-    client: TestClient,
+    auth_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/login",
         json={
             "email": "invalid-email",
@@ -296,10 +271,10 @@ def test_login_invalid_email(
 
 
 def test_login_missing_password(
-    client: TestClient,
+    auth_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/login",
         json={
             "email": "test@example.com",
@@ -311,9 +286,9 @@ def test_login_missing_password(
 
 
 def test_login_rejects_password_longer_than_128_characters(
-    client: TestClient,
+    auth_client: TestClient,
 ) -> None:
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/login",
         json={
             "email": "test@example.com",

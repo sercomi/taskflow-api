@@ -1,20 +1,10 @@
-from collections.abc import AsyncGenerator, Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from app.api.v1.endpoints.users import router
-from app.core.auth import get_current_user
-from app.core.database import get_session
 from app.models.user import User
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
-
-@pytest.fixture
-def mock_session() -> AsyncMock:
-    return AsyncMock(spec=AsyncSession)
 
 
 @pytest.fixture
@@ -28,47 +18,24 @@ def current_user() -> User:
     )
 
 
-@pytest.fixture
-def client(
-    mock_session: AsyncMock,
-    current_user: User,
-) -> Generator[TestClient, None, None]:
-    application = FastAPI()
-    application.include_router(router, prefix="/api/v1")
-
-    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
-        yield mock_session
-
-    async def override_get_current_user() -> User:
-        return current_user
-
-    application.dependency_overrides[get_session] = override_get_session
-    application.dependency_overrides[get_current_user] = override_get_current_user
-
-    with TestClient(application) as test_client:
-        yield test_client
-
-    application.dependency_overrides.clear()
-
-
 def test_update_profile_success(
-    client: TestClient,
+    users_client: TestClient,
     mock_session: AsyncMock,
     current_user: User,
 ) -> None:
     result = MagicMock()
     result.scalar_one_or_none.return_value = None
 
-    async def execute_query(*args, **kwargs):
+    async def execute_query(*args: Any, **kwargs: Any) -> MagicMock:
         return result
 
-    async def refresh_user(user):
+    async def refresh_user(user: User) -> None:
         assert user is current_user
 
     mock_session.execute.side_effect = execute_query
     mock_session.refresh.side_effect = refresh_user
 
-    response = client.patch(
+    response = users_client.patch(
         "/api/v1/users/me",
         json={"username": "newusername"},
     )
@@ -88,10 +55,10 @@ def test_update_profile_success(
 
 
 def test_update_profile_username_null(
-    client: TestClient,
+    users_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
-    response = client.patch(
+    response = users_client.patch(
         "/api/v1/users/me",
         json={"username": None},
     )
@@ -101,10 +68,10 @@ def test_update_profile_username_null(
 
 
 def test_update_profile_username_empty(
-    client: TestClient,
+    users_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
-    response = client.patch(
+    response = users_client.patch(
         "/api/v1/users/me",
         json={"username": ""},
     )
@@ -114,10 +81,10 @@ def test_update_profile_username_empty(
 
 
 def test_update_profile_username_too_short(
-    client: TestClient,
+    users_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
-    response = client.patch(
+    response = users_client.patch(
         "/api/v1/users/me",
         json={"username": "ab"},
     )
@@ -127,10 +94,10 @@ def test_update_profile_username_too_short(
 
 
 def test_update_profile_username_too_long(
-    client: TestClient,
+    users_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
-    response = client.patch(
+    response = users_client.patch(
         "/api/v1/users/me",
         json={"username": "a" * 51},
     )
@@ -140,7 +107,7 @@ def test_update_profile_username_too_long(
 
 
 def test_update_profile_duplicate_username(
-    client: TestClient,
+    users_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     result = MagicMock()
@@ -153,7 +120,7 @@ def test_update_profile_duplicate_username(
     )
     mock_session.execute.return_value = result
 
-    response = client.patch(
+    response = users_client.patch(
         "/api/v1/users/me",
         json={"username": "existinguser"},
     )
@@ -164,7 +131,7 @@ def test_update_profile_duplicate_username(
 
 
 def test_update_profile_integrity_error(
-    client: TestClient,
+    users_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     result = MagicMock()
@@ -177,7 +144,7 @@ def test_update_profile_integrity_error(
         Exception("Unique constraint violation"),
     )
 
-    response = client.patch(
+    response = users_client.patch(
         "/api/v1/users/me",
         json={"username": "existinguser"},
     )
@@ -190,11 +157,11 @@ def test_update_profile_integrity_error(
 
 
 def test_update_profile_does_not_allow_sensitive_fields(
-    client: TestClient,
+    users_client: TestClient,
     mock_session: AsyncMock,
     current_user: User,
 ) -> None:
-    response = client.patch(
+    response = users_client.patch(
         "/api/v1/users/me",
         json={
             "username": "newusername",
