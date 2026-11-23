@@ -4,7 +4,6 @@ from app.core.config import Settings
 
 def test_database_url_is_created_correctly() -> None:
     settings = Settings(
-        _env_file=None,
         postgres_user="test_user",
         postgres_password="test_password",
         postgres_host="localhost",
@@ -24,7 +23,6 @@ def test_database_url_is_created_correctly() -> None:
 
 def test_database_url_requires_password() -> None:
     settings = Settings(
-        _env_file=None,
         postgres_password="",
     )
 

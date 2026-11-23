@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from app.models.organization import OrganizationRole
 from app.models.organization_member import OrganizationMember
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskStatus
@@ -16,45 +15,6 @@ from app.services.exceptions import (
 )
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
-
-@pytest.fixture
-def mock_session() -> AsyncMock:
-    return AsyncMock(spec=AsyncSession)
-
-
-@pytest.fixture
-def current_user() -> User:
-    return User(
-        id=1,
-        email="owner@example.com",
-        username="owner",
-        hashed_password="hashed-password",
-        is_active=True,
-    )
-
-
-@pytest.fixture
-def owner_membership(current_user: User) -> OrganizationMember:
-    return OrganizationMember(
-        organization_id=1,
-        user_id=current_user.id,
-        user=current_user,
-        role=OrganizationRole.OWNER,
-    )
-
-
-@pytest.fixture
-def sample_project() -> Project:
-    return Project(
-        id=1,
-        organization_id=1,
-        name="Backend API",
-        slug="backend-api",
-        description="Backend project",
-        is_active=True,
-    )
 
 
 @pytest.fixture
@@ -784,6 +744,8 @@ async def test_get_project_tasks_filters_by_status(
 async def test_get_project_tasks_filters_by_priority(
     mock_session: AsyncMock,
     current_user: User,
+    owner_membership: OrganizationMember,
+    sample_project: Project,
     sample_task: Task,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -814,6 +776,7 @@ async def test_get_project_tasks_filters_by_priority(
 async def test_get_project_tasks_filters_by_assignee(
     mock_session: AsyncMock,
     current_user: User,
+    owner_membership: OrganizationMember,
     sample_task: Task,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -845,6 +808,8 @@ async def test_get_project_tasks_filters_by_assignee(
 async def test_get_project_tasks_filters_by_search(
     mock_session: AsyncMock,
     current_user: User,
+    owner_membership: OrganizationMember,
+    sample_project: Project,
     sample_task: Task,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -875,6 +840,8 @@ async def test_get_project_tasks_filters_by_search(
 async def test_get_project_tasks_combines_filters(
     mock_session: AsyncMock,
     current_user: User,
+    owner_membership: OrganizationMember,
+    sample_project: Project,
     sample_task: Task,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -909,6 +876,8 @@ async def test_get_project_tasks_combines_filters(
 async def test_get_project_tasks_without_filters(
     mock_session: AsyncMock,
     current_user: User,
+    owner_membership: OrganizationMember,
+    sample_project: Project,
     sample_task: Task,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

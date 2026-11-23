@@ -1,46 +1,12 @@
-from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-from app.core.auth import get_current_user
-from app.core.database import get_session
 from app.core.security import create_access_token
 from app.models.user import User
-from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession
-
-
-@pytest.fixture
-def mock_session() -> AsyncMock:
-    return AsyncMock(spec=AsyncSession)
-
-
-@pytest.fixture
-def client(
-    mock_session: AsyncMock,
-) -> Generator[TestClient, None, None]:
-    application = FastAPI()
-
-    @application.get("/protected")
-    async def protected(
-        current_user: User = Depends(get_current_user),  # noqa: B008
-    ) -> dict[str, int]:
-        return {"user_id": current_user.id}
-
-    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
-        yield mock_session
-
-    application.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(application) as test_client:
-        yield test_client
-
-    application.dependency_overrides.clear()
 
 
 def test_get_current_user_success(
-    client: TestClient,
+    dependency_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     user = User(
@@ -56,7 +22,7 @@ def test_get_current_user_success(
 
     token = create_access_token(subject="1")
 
-    response = client.get(
+    response = dependency_client.get(
         "/protected",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -67,20 +33,20 @@ def test_get_current_user_success(
 
 
 def test_get_current_user_without_token(
-    client: TestClient,
+    dependency_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
-    response = client.get("/protected")
+    response = dependency_client.get("/protected")
 
     assert response.status_code == 401
     mock_session.execute.assert_not_awaited()
 
 
 def test_get_current_user_invalid_token(
-    client: TestClient,
+    dependency_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
-    response = client.get(
+    response = dependency_client.get(
         "/protected",
         headers={"Authorization": "Bearer invalid-token"},
     )
@@ -90,12 +56,12 @@ def test_get_current_user_invalid_token(
 
 
 def test_get_current_user_invalid_subject(
-    client: TestClient,
+    dependency_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     token = create_access_token(subject="invalid")
 
-    response = client.get(
+    response = dependency_client.get(
         "/protected",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -105,7 +71,7 @@ def test_get_current_user_invalid_subject(
 
 
 def test_get_current_user_not_found(
-    client: TestClient,
+    dependency_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     result = MagicMock()
@@ -114,7 +80,7 @@ def test_get_current_user_not_found(
 
     token = create_access_token(subject="999")
 
-    response = client.get(
+    response = dependency_client.get(
         "/protected",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -124,7 +90,7 @@ def test_get_current_user_not_found(
 
 
 def test_get_current_user_inactive(
-    client: TestClient,
+    dependency_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
     user = User(
@@ -140,7 +106,7 @@ def test_get_current_user_inactive(
 
     token = create_access_token(subject="1")
 
-    response = client.get(
+    response = dependency_client.get(
         "/protected",
         headers={"Authorization": f"Bearer {token}"},
     )

@@ -1,85 +1,18 @@
-from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from app.api.v1.endpoints import projects as projects_endpoint
-from app.api.v1.endpoints.projects import router
-from app.core.auth import get_current_user
-from app.core.database import get_session
-from app.models.organization import OrganizationRole
 from app.models.organization_member import OrganizationMember
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
 from app.services import project as project_service
 from app.services.exceptions import OrganizationNotFoundError, ProjectNotFoundError
-from app.services.project import generate_slug, generate_unique_project_slug, update_project
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from pydantic import ValidationError
+from app.services.project import (
+    generate_slug,
+    generate_unique_project_slug,
+    update_project,
+)
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-
-
-@pytest.fixture
-def mock_session() -> AsyncMock:
-    return AsyncMock(spec=AsyncSession)
-
-
-@pytest.fixture
-def current_user() -> User:
-    return User(
-        id=1,
-        email="owner@example.com",
-        username="owner",
-        hashed_password="hashed-password",
-        is_active=True,
-    )
-
-
-@pytest.fixture
-def owner_membership(current_user: User) -> OrganizationMember:
-    return OrganizationMember(
-        organization_id=1,
-        user_id=current_user.id,
-        user=current_user,
-        role=OrganizationRole.OWNER,
-    )
-
-
-@pytest.fixture
-def sample_project() -> Project:
-    return Project(
-        id=1,
-        organization_id=1,
-        name="Backend API",
-        slug="backend-api",
-        description="Backend project",
-        is_active=True,
-    )
-
-
-@pytest.fixture
-def client(
-    mock_session: AsyncMock,
-    current_user: User,
-) -> Generator[TestClient, None, None]:
-    application = FastAPI()
-    application.include_router(router, prefix="/api/v1")
-
-    async def override_get_session() -> AsyncGenerator[AsyncSession, None]:
-        yield mock_session
-
-    async def override_get_current_user() -> User:
-        return current_user
-
-    application.dependency_overrides[get_session] = override_get_session
-    application.dependency_overrides[get_current_user] = override_get_current_user
-
-    with TestClient(application) as test_client:
-        yield test_client
-
-    application.dependency_overrides.clear()
 
 
 @pytest.mark.parametrize(
@@ -369,143 +302,6 @@ async def test_get_project_by_id_rejects_inactive_project(
         )
 
 
-def test_list_projects_success(
-    client: TestClient,
-    mock_session: AsyncMock,
-    current_user: User,
-    sample_project: Project,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(return_value=[sample_project])
-    monkeypatch.setattr(
-        projects_endpoint,
-        "get_organization_projects",
-        service,
-    )
-
-    response = client.get("/api/v1/organizations/1/projects")
-
-    assert response.status_code == 200
-    assert response.json() == [
-        {
-            "id": sample_project.id,
-            "organization_id": sample_project.organization_id,
-            "name": sample_project.name,
-            "slug": sample_project.slug,
-            "description": sample_project.description,
-            "is_active": sample_project.is_active,
-        }
-    ]
-
-    service.assert_awaited_once_with(
-        session=mock_session,
-        organization_id=1,
-        current_user=current_user,
-    )
-
-
-def test_list_projects_not_found(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(side_effect=OrganizationNotFoundError("Organization not found"))
-    monkeypatch.setattr(
-        projects_endpoint,
-        "get_organization_projects",
-        service,
-    )
-
-    response = client.get("/api/v1/organizations/999/projects")
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Organization not found"}
-
-
-def test_get_project_success(
-    client: TestClient,
-    mock_session: AsyncMock,
-    current_user: User,
-    sample_project: Project,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(return_value=sample_project)
-    monkeypatch.setattr(
-        projects_endpoint,
-        "get_project_by_id",
-        service,
-    )
-
-    response = client.get("/api/v1/organizations/1/projects/1")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "id": sample_project.id,
-        "organization_id": sample_project.organization_id,
-        "name": sample_project.name,
-        "slug": sample_project.slug,
-        "description": sample_project.description,
-        "is_active": sample_project.is_active,
-    }
-
-    service.assert_awaited_once_with(
-        session=mock_session,
-        organization_id=1,
-        project_id=1,
-        current_user=current_user,
-    )
-
-
-def test_get_project_not_found(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(side_effect=ProjectNotFoundError("Project not found"))
-    monkeypatch.setattr(
-        projects_endpoint,
-        "get_project_by_id",
-        service,
-    )
-
-    response = client.get("/api/v1/organizations/1/projects/999")
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Project not found"}
-
-
-def test_project_update_accepts_name() -> None:
-    update = ProjectUpdate(name="New project name")
-
-    assert update.name == "New project name"
-
-
-def test_project_update_accepts_description() -> None:
-    update = ProjectUpdate(description="Updated description")
-
-    assert update.description == "Updated description"
-
-
-def test_project_update_allows_clearing_description() -> None:
-    update = ProjectUpdate(description=None)
-
-    assert update.description is None
-    assert "description" in update.model_fields_set
-
-
-def test_project_update_rejects_null_name() -> None:
-    with pytest.raises(ValidationError):
-        ProjectUpdate(name=None)
-
-
-def test_project_update_rejects_empty_payload() -> None:
-    with pytest.raises(ValidationError):
-        ProjectUpdate()
-
-
-def test_project_update_rejects_extra_fields() -> None:
-    with pytest.raises(ValidationError):
-        ProjectUpdate(unknown="value")  # type: ignore[call-arg]
-
-
 async def test_update_project_success(
     mock_session: AsyncMock,
     current_user: User,
@@ -695,92 +491,39 @@ async def test_update_project_rolls_back_on_integrity_error(
     mock_session.refresh.assert_not_awaited()
 
 
-def test_update_project_success_endpoint(
-    client: TestClient,
+@pytest.mark.asyncio
+async def test_update_project_name_with_same_normalized_slug(
     mock_session: AsyncMock,
     current_user: User,
+    owner_membership: OrganizationMember,
     sample_project: Project,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    service = AsyncMock(return_value=sample_project)
-    monkeypatch.setattr(
-        projects_endpoint,
-        "update_project",
-        service,
-    )
+    sample_project.name = "Backend API"
+    sample_project.slug = "backend-api"
 
-    response = client.patch(
-        "/api/v1/organizations/1/projects/1",
-        json={
-            "name": "Updated project",
-            "description": "Updated description",
-        },
-    )
+    mock_session.scalar.side_effect = [
+        sample_project,
+        None,
+    ]
 
-    assert response.status_code == 200
-    assert response.json()["id"] == sample_project.id
+    project_data = ProjectUpdate(name="Backend-API")
 
-    service.assert_awaited_once_with(
-        session=mock_session,
-        organization_id=1,
-        project_id=1,
-        project_data=ProjectUpdate(
-            name="Updated project",
-            description="Updated description",
-        ),
-        current_user=current_user,
-    )
+    with patch(
+        "app.services.project._get_active_organization_membership_for_update",
+        new_callable=AsyncMock,
+        return_value=owner_membership,
+    ):
+        result = await update_project(
+            session=mock_session,
+            organization_id=sample_project.organization_id,
+            project_id=sample_project.id,
+            project_data=project_data,
+            current_user=current_user,
+        )
 
-
-def test_update_project_not_found_endpoint(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(side_effect=ProjectNotFoundError("Project not found"))
-    monkeypatch.setattr(
-        projects_endpoint,
-        "update_project",
-        service,
-    )
-
-    response = client.patch(
-        "/api/v1/organizations/1/projects/999",
-        json={"name": "Updated project"},
-    )
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Project not found"}
-
-
-def test_update_project_organization_not_found_endpoint(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(side_effect=OrganizationNotFoundError("Organization not found"))
-    monkeypatch.setattr(
-        projects_endpoint,
-        "update_project",
-        service,
-    )
-
-    response = client.patch(
-        "/api/v1/organizations/999/projects/1",
-        json={"name": "Updated project"},
-    )
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Organization not found"}
-
-
-def test_update_project_invalid_payload_endpoint(
-    client: TestClient,
-) -> None:
-    response = client.patch(
-        "/api/v1/organizations/1/projects/1",
-        json={"name": None},
-    )
-
-    assert response.status_code == 422
+    assert result.name == "Backend-API"
+    assert result.slug == "backend-api"
+    mock_session.commit.assert_awaited_once()
 
 
 async def test_deactivate_project_success(
@@ -883,181 +626,3 @@ async def test_deactivate_project_rolls_back_on_integrity_error(
         )
 
     mock_session.rollback.assert_awaited_once()
-
-
-def test_deactivate_project_endpoint_success(
-    client: TestClient,
-    mock_session: AsyncMock,
-    current_user: User,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(return_value=None)
-    monkeypatch.setattr(
-        projects_endpoint,
-        "deactivate_project",
-        service,
-    )
-
-    response = client.delete("/api/v1/organizations/1/projects/1")
-
-    assert response.status_code == 204
-    assert response.content == b""
-
-    service.assert_awaited_once_with(
-        session=mock_session,
-        organization_id=1,
-        project_id=1,
-        current_user=current_user,
-    )
-
-
-def test_deactivate_project_endpoint_not_found(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(side_effect=ProjectNotFoundError("Project not found"))
-    monkeypatch.setattr(
-        projects_endpoint,
-        "deactivate_project",
-        service,
-    )
-
-    response = client.delete("/api/v1/organizations/1/projects/999")
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Project not found"}
-
-
-def test_deactivate_project_endpoint_organization_not_found(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(side_effect=OrganizationNotFoundError("Organization not found"))
-    monkeypatch.setattr(
-        projects_endpoint,
-        "deactivate_project",
-        service,
-    )
-
-    response = client.delete("/api/v1/organizations/999/projects/1")
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Organization not found"}
-
-
-def test_create_project_endpoint_success(
-    client: TestClient,
-    mock_session: AsyncMock,
-    current_user: User,
-    sample_project: Project,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(return_value=sample_project)
-    monkeypatch.setattr(
-        projects_endpoint,
-        "create_project",
-        service,
-    )
-
-    response = client.post(
-        "/api/v1/organizations/1/projects",
-        json={
-            "name": "Backend API",
-            "description": "Backend project",
-        },
-    )
-
-    assert response.status_code == 201
-    assert response.json()["id"] == sample_project.id
-    assert response.json()["slug"] == sample_project.slug
-
-    service.assert_awaited_once_with(
-        session=mock_session,
-        organization_id=1,
-        project_data=ProjectCreate(
-            name="Backend API",
-            description="Backend project",
-        ),
-        current_user=current_user,
-    )
-
-
-def test_create_project_endpoint_organization_not_found(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(side_effect=OrganizationNotFoundError("Organization not found"))
-    monkeypatch.setattr(
-        projects_endpoint,
-        "create_project",
-        service,
-    )
-
-    response = client.post(
-        "/api/v1/organizations/999/projects",
-        json={"name": "Backend API"},
-    )
-
-    assert response.status_code == 404
-    assert response.json() == {"detail": "Organization not found"}
-
-
-def test_create_project_endpoint_integrity_error(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = AsyncMock(
-        side_effect=IntegrityError(
-            "INSERT",
-            {},
-            Exception("duplicate slug"),
-        )
-    )
-    monkeypatch.setattr(
-        projects_endpoint,
-        "create_project",
-        service,
-    )
-
-    response = client.post(
-        "/api/v1/organizations/1/projects",
-        json={"name": "Backend API"},
-    )
-
-    assert response.status_code == 409
-    assert response.json() == {"detail": "Project already exists"}
-
-
-@pytest.mark.asyncio
-async def test_update_project_name_with_same_normalized_slug(
-    mock_session: AsyncMock,
-    current_user: User,
-    owner_membership: OrganizationMember,
-    sample_project: Project,
-) -> None:
-    sample_project.name = "Backend API"
-    sample_project.slug = "backend-api"
-
-    mock_session.scalar.side_effect = [
-        sample_project,
-        None,
-    ]
-
-    project_data = ProjectUpdate(name="Backend-API")
-
-    with patch(
-        "app.services.project._get_active_organization_membership_for_update",
-        new_callable=AsyncMock,
-        return_value=owner_membership,
-    ):
-        result = await update_project(
-            session=mock_session,
-            organization_id=sample_project.organization_id,
-            project_id=sample_project.id,
-            project_data=project_data,
-            current_user=current_user,
-        )
-
-    assert result.name == "Backend-API"
-    assert result.slug == "backend-api"
-    mock_session.commit.assert_awaited_once()
