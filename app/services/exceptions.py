@@ -24,3 +24,11 @@ class SelfRemovalError(Exception):
 
 class ProjectNotFoundError(Exception):
     pass
+
+
+class TaskNotFoundError(Exception):
+    pass
+
+
+class TaskAssigneeNotFoundError(Exception):
+    pass

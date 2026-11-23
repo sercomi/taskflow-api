@@ -1,13 +1,14 @@
 import re
 import unicodedata
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.organization import Organization, OrganizationRole
 from app.models.organization_member import OrganizationMember
+from app.models.task import Task
 from app.models.user import User
 from app.schemas.organization import OrganizationCreate
 from app.schemas.organization_member import OrganizationMemberCreate, OrganizationMemberUpdate
@@ -328,6 +329,15 @@ async def remove_organization_member(
 
     if target_membership.role == OrganizationRole.OWNER:
         raise OrganizationOwnerError("Cannot remove the organization owner")
+
+    await session.execute(
+        update(Task)
+        .where(
+            Task.organization_id == organization_id,
+            Task.assignee_id == user_id,
+        )
+        .values(assignee_id=None)
+    )
 
     await session.delete(target_membership)
     await session.commit()
