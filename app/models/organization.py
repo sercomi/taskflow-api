@@ -10,6 +10,7 @@ from app.core.base import Base
 if TYPE_CHECKING:
     from app.models.organization_member import OrganizationMember
     from app.models.project import Project
+    from app.models.task import Task
 
 
 class OrganizationRole(StrEnum):
@@ -56,4 +57,9 @@ class Organization(Base):
     projects: Mapped[list["Project"]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
+    )
+
+    tasks: Mapped[list["Task"]] = relationship(
+        back_populates="organization",
+        passive_deletes="all",
     )

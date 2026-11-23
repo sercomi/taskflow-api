@@ -1,10 +1,14 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.base import Base
 from app.models import OrganizationMember
+
+if TYPE_CHECKING:
+    from app.models.task import Task
 
 
 class User(Base):
@@ -52,4 +56,9 @@ class User(Base):
     organization_memberships: Mapped[list["OrganizationMember"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
+    )
+
+    assigned_tasks: Mapped[list["Task"]] = relationship(
+        back_populates="assignee",
+        passive_deletes=True,
     )
