@@ -6,6 +6,13 @@ from app.models.organization_member import OrganizationMember
 from app.models.user import User
 from app.schemas.organization_member import OrganizationMemberCreate, OrganizationMemberUpdate
 from app.services import organization as organization_service
+from app.services.exceptions import (
+    DuplicateOrganizationMemberError,
+    MemberNotFoundError,
+    OrganizationOwnerError,
+    SelfRemovalError,
+    UserNotFoundError,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -118,7 +125,7 @@ async def test_remove_member_rejects_self_removal(
         AsyncMock(return_value=membership),
     )
 
-    with pytest.raises(ValueError, match="Cannot remove yourself"):
+    with pytest.raises(SelfRemovalError, match="Cannot remove yourself"):
         await organization_service.remove_organization_member(mock_session, 1, 1, current_user)
 
     mock_session.delete.assert_not_awaited()
@@ -149,7 +156,7 @@ async def test_remove_member_protects_owner(
     mock_session.scalar.return_value = owner
 
     with pytest.raises(
-        ValueError,
+        OrganizationOwnerError,
         match="Cannot remove the organization owner",
     ):
         await organization_service.remove_organization_member(mock_session, 1, 2, current_user)
@@ -263,7 +270,7 @@ async def test_add_member_rejects_unknown_user(
     user_result.scalar_one_or_none.return_value = None
     mock_session.execute.return_value = user_result
 
-    with pytest.raises(LookupError, match="User not found"):
+    with pytest.raises(UserNotFoundError, match="User not found"):
         await organization_service.add_organization_member(
             session=mock_session,
             organization_id=1,
@@ -318,7 +325,7 @@ async def test_add_member_rejects_duplicate(
         membership_result,
     ]
 
-    with pytest.raises(ValueError, match="User is already a member"):
+    with pytest.raises(DuplicateOrganizationMemberError, match="User is already a member"):
         await organization_service.add_organization_member(
             session=mock_session,
             organization_id=1,
@@ -432,7 +439,7 @@ async def test_update_member_role_rejects_missing_member(
     )
     mock_session.scalar.return_value = None
 
-    with pytest.raises(LookupError, match="Member not found"):
+    with pytest.raises(MemberNotFoundError, match="Member not found"):
         await organization_service.update_organization_member_role(
             session=mock_session,
             organization_id=1,
@@ -471,7 +478,7 @@ async def test_update_member_role_protects_owner(
     mock_session.scalar.return_value = target_owner
 
     with pytest.raises(
-        ValueError,
+        OrganizationOwnerError,
         match="Cannot change the owner's role",
     ):
         await organization_service.update_organization_member_role(
@@ -528,7 +535,7 @@ async def test_add_member_handles_concurrent_duplicate(
         orig=original_error,
     )
 
-    with pytest.raises(ValueError, match="User is already a member"):
+    with pytest.raises(DuplicateOrganizationMemberError, match="User is already a member"):
         await organization_service.add_organization_member(
             session=mock_session,
             organization_id=1,

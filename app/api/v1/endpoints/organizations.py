@@ -13,6 +13,13 @@ from app.schemas.organization_member import (
     OrganizationMemberResponse,
     OrganizationMemberUpdate,
 )
+from app.services.exceptions import (
+    MemberNotFoundError,
+    OrganizationNotFoundError,
+    OrganizationOwnerError,
+    SelfRemovalError,
+    UserNotFoundError,
+)
 from app.services.organization import (
     add_organization_member,
     create_organization,
@@ -43,7 +50,6 @@ async def create_organization_endpoint(
             user=current_user,
         )
     except IntegrityError:
-        await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Could not create organization",
@@ -107,7 +113,7 @@ async def list_organization_members_endpoint(
             organization_id=organization_id,
             current_user=current_user,
         )
-    except LookupError:
+    except OrganizationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Organization not found",
@@ -142,13 +148,15 @@ async def add_organization_member_endpoint(
             member_data=member_data,
             current_user=current_user,
         )
-    except LookupError as exc:
-        detail = (
-            "Organization not found" if str(exc) == "Organization not found" else "User not found"
-        )
+    except OrganizationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=detail,
+            detail="Organization not found",
+        ) from None
+    except UserNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
         ) from None
     except PermissionError:
         raise HTTPException(
@@ -188,13 +196,15 @@ async def update_organization_member_endpoint(
             member_data=member_data,
             current_user=current_user,
         )
-    except LookupError as exc:
-        detail = (
-            "Organization not found" if str(exc) == "Organization not found" else "Member not found"
-        )
+    except OrganizationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=detail,
+            detail="Organization not found",
+        ) from None
+    except MemberNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
         ) from None
     except PermissionError:
         raise HTTPException(
@@ -232,21 +242,28 @@ async def remove_organization_member_endpoint(
             user_id=user_id,
             current_user=current_user,
         )
-    except LookupError as exc:
-        detail = (
-            "Organization not found" if str(exc) == "Organization not found" else "Member not found"
-        )
+    except OrganizationNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=detail,
+            detail="Organization not found",
+        ) from None
+    except MemberNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Member not found",
         ) from None
     except PermissionError:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
         ) from None
-    except ValueError as exc:
+    except SelfRemovalError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
+            detail="Cannot remove yourself",
+        ) from None
+    except OrganizationOwnerError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot remove the organization owner",
         ) from None

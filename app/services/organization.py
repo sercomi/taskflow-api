@@ -11,6 +11,14 @@ from app.models.organization_member import OrganizationMember
 from app.models.user import User
 from app.schemas.organization import OrganizationCreate
 from app.schemas.organization_member import OrganizationMemberCreate, OrganizationMemberUpdate
+from app.services.exceptions import (
+    DuplicateOrganizationMemberError,
+    MemberNotFoundError,
+    OrganizationNotFoundError,
+    OrganizationOwnerError,
+    SelfRemovalError,
+    UserNotFoundError,
+)
 
 
 def generate_slug(value: str) -> str:
@@ -61,7 +69,12 @@ async def create_organization(
     session.add(organization)
     session.add(membership)
 
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise
+
     await session.refresh(organization)
 
     return organization
@@ -151,7 +164,7 @@ async def get_organization_members(
     )
 
     if current_membership is None:
-        raise LookupError("Organization not found")
+        raise OrganizationNotFoundError("Organization not found")
 
     result = await session.scalars(
         select(OrganizationMember)
@@ -181,7 +194,7 @@ async def add_organization_member(
     )
 
     if current_membership is None:
-        raise LookupError("Organization not found")
+        raise OrganizationNotFoundError("Organization not found")
 
     if current_membership.role not in {
         OrganizationRole.OWNER,
@@ -193,7 +206,7 @@ async def add_organization_member(
     user = result.scalar_one_or_none()
 
     if user is None:
-        raise LookupError("User not found")
+        raise UserNotFoundError("User not found")
 
     existing_membership = await session.execute(
         select(OrganizationMember).where(
@@ -203,7 +216,7 @@ async def add_organization_member(
     )
 
     if existing_membership.scalar_one_or_none() is not None:
-        raise ValueError("User is already a member")
+        raise DuplicateOrganizationMemberError("User is already a member")
 
     membership = OrganizationMember(
         organization_id=organization_id,
@@ -221,7 +234,7 @@ async def add_organization_member(
         constraint_name = getattr(exc.orig, "constraint_name", None)
 
         if constraint_name == "uq_organization_member":
-            raise ValueError("User is already a member") from exc
+            raise DuplicateOrganizationMemberError("User is already a member") from exc
 
         raise
 
@@ -242,13 +255,14 @@ async def update_organization_member_role(
     )
 
     if current_membership is None:
-        raise LookupError("Organization not found")
+        raise OrganizationNotFoundError("Organization not found")
 
     if current_membership.role != OrganizationRole.OWNER:
         raise PermissionError("Only the owner can update member roles")
 
     target_membership = await session.scalar(
         select(OrganizationMember)
+        .options(selectinload(OrganizationMember.user))
         .where(
             OrganizationMember.organization_id == organization_id,
             OrganizationMember.user_id == user_id,
@@ -257,10 +271,10 @@ async def update_organization_member_role(
     )
 
     if target_membership is None:
-        raise LookupError("Member not found")
+        raise MemberNotFoundError("Member not found")
 
     if target_membership.role == OrganizationRole.OWNER:
-        raise ValueError("Cannot change the owner's role")
+        raise OrganizationOwnerError("Cannot change the owner's role")
 
     target_membership.role = member_data.role
 
@@ -283,7 +297,7 @@ async def remove_organization_member(
     )
 
     if current_membership is None:
-        raise LookupError("Organization not found")
+        raise OrganizationNotFoundError("Organization not found")
 
     if current_membership.role not in {
         OrganizationRole.OWNER,
@@ -292,7 +306,7 @@ async def remove_organization_member(
         raise PermissionError("Insufficient permissions")
 
     if user_id == current_user.id:
-        raise ValueError("Cannot remove yourself")
+        raise SelfRemovalError("Cannot remove yourself")
 
     target_membership = await session.scalar(
         select(OrganizationMember)
@@ -304,10 +318,16 @@ async def remove_organization_member(
     )
 
     if target_membership is None:
-        raise LookupError("Member not found")
+        raise MemberNotFoundError("Member not found")
+
+    if (
+        target_membership.role == OrganizationRole.ADMIN
+        and current_membership.role != OrganizationRole.OWNER
+    ):
+        raise PermissionError("Only the owner can remove admins")
 
     if target_membership.role == OrganizationRole.OWNER:
-        raise ValueError("Cannot remove the organization owner")
+        raise OrganizationOwnerError("Cannot remove the organization owner")
 
     await session.delete(target_membership)
     await session.commit()

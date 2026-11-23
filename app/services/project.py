@@ -10,6 +10,10 @@ from app.models.organization_member import OrganizationMember
 from app.models.project import Project
 from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate
+from app.services.exceptions import (
+    OrganizationNotFoundError,
+    ProjectNotFoundError,
+)
 from app.services.organization import (
     _get_active_organization_membership_for_update,
 )
@@ -26,6 +30,7 @@ async def generate_unique_project_slug(
     session: AsyncSession,
     organization_id: int,
     name: str,
+    exclude_project_id: int | None = None,
 ) -> str:
     base_slug = generate_slug(name)
 
@@ -35,16 +40,20 @@ async def generate_unique_project_slug(
     slug = base_slug
     suffix = 2
 
-    while await session.scalar(
-        select(Project.id).where(
+    while True:
+        query = select(Project.id).where(
             Project.organization_id == organization_id,
             Project.slug == slug,
         )
-    ):
+
+        if exclude_project_id is not None:
+            query = query.where(Project.id != exclude_project_id)
+
+        if await session.scalar(query) is None:
+            return slug
+
         slug = f"{base_slug}-{suffix}"
         suffix += 1
-
-    return slug
 
 
 async def create_project(
@@ -60,7 +69,7 @@ async def create_project(
     )
 
     if membership is None:
-        raise LookupError("Organization not found")
+        raise OrganizationNotFoundError("Organization not found")
 
     slug = await generate_unique_project_slug(
         session=session,
@@ -107,7 +116,7 @@ async def get_organization_projects(
     )
 
     if membership is None:
-        raise LookupError("Organization not found")
+        raise OrganizationNotFoundError("Organization not found")
 
     result = await session.scalars(
         select(Project)
@@ -147,7 +156,7 @@ async def get_project_by_id(
     )
 
     if project is None:
-        raise LookupError("Project not found")
+        raise ProjectNotFoundError("Project not found")
 
     return project
 
@@ -166,7 +175,7 @@ async def update_project(
     )
 
     if membership is None:
-        raise LookupError("Organization not found")
+        raise OrganizationNotFoundError("Organization not found")
 
     project = await session.scalar(
         select(Project)
@@ -179,7 +188,7 @@ async def update_project(
     )
 
     if project is None:
-        raise LookupError("Project not found")
+        raise ProjectNotFoundError("Project not found")
 
     update_data = project_data.model_dump(exclude_unset=True)
 
@@ -192,6 +201,7 @@ async def update_project(
                 session,
                 organization_id,
                 new_name,
+                exclude_project_id=project.id,
             )
 
     if "description" in update_data:
@@ -221,7 +231,7 @@ async def deactivate_project(
     )
 
     if membership is None:
-        raise LookupError("Organization not found")
+        raise OrganizationNotFoundError("Organization not found")
 
     project = await session.scalar(
         select(Project)
@@ -234,7 +244,7 @@ async def deactivate_project(
     )
 
     if project is None:
-        raise LookupError("Project not found")
+        raise ProjectNotFoundError("Project not found")
 
     project.is_active = False
 

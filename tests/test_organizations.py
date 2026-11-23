@@ -9,6 +9,13 @@ from app.core.auth import get_current_user
 from app.core.database import get_session
 from app.models.organization import Organization, OrganizationRole
 from app.models.user import User
+from app.services.exceptions import (
+    MemberNotFoundError,
+    OrganizationNotFoundError,
+    OrganizationOwnerError,
+    SelfRemovalError,
+    UserNotFoundError,
+)
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import IntegrityError
@@ -371,7 +378,7 @@ def test_list_organization_members_not_found(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    service = AsyncMock(side_effect=LookupError())
+    service = AsyncMock(side_effect=OrganizationNotFoundError("Organization not found"))
     monkeypatch.setattr(
         organizations_endpoint,
         "get_organization_members",
@@ -413,8 +420,8 @@ def test_add_organization_member_success(
 @pytest.mark.parametrize(
     ("exception", "expected_status"),
     [
-        (LookupError("Organization not found"), 404),
-        (LookupError("User not found"), 404),
+        (OrganizationNotFoundError("Organization not found"), 404),
+        (UserNotFoundError("User not found"), 404),
         (PermissionError("Insufficient permissions"), 403),
         (ValueError("User is already a member"), 409),
     ],
@@ -471,8 +478,8 @@ def test_update_organization_member_role_success(
 @pytest.mark.parametrize(
     ("exception", "expected_status"),
     [
-        (LookupError("Organization not found"), 404),
-        (LookupError("Member not found"), 404),
+        (OrganizationNotFoundError("Organization not found"), 404),
+        (MemberNotFoundError("Member not found"), 404),
         (PermissionError("Only the owner can update member roles"), 403),
         (ValueError("Cannot change the owner's role"), 409),
     ],
@@ -533,11 +540,11 @@ def test_remove_organization_member_success(
 @pytest.mark.parametrize(
     ("exception", "expected_status"),
     [
-        (LookupError("Organization not found"), 404),
-        (LookupError("Member not found"), 404),
+        (OrganizationNotFoundError("Organization not found"), 404),
+        (MemberNotFoundError("Member not found"), 404),
         (PermissionError("Insufficient permissions"), 403),
-        (ValueError("Cannot remove yourself"), 409),
-        (ValueError("Cannot remove the organization owner"), 409),
+        (SelfRemovalError("Cannot remove yourself"), 409),
+        (OrganizationOwnerError("Cannot remove the organization owner"), 409),
     ],
 )
 def test_remove_organization_member_errors(
