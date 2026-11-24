@@ -11,10 +11,12 @@ TaskFlow provides an organization-based workspace where users can collaborate on
 - **JWT Authentication:** Secure user registration and login using access tokens.
 - **Multi-tenant architecture:** Users can belong to multiple organizations.
 - **Organization management:** Create organizations and manage memberships.
-- **Role-based access control:** Organization-level roles, including owners and members.
+- **Role-based access control:** Organization-level roles (OWNER, ADMIN and MEMBER) for membership management.
+- **Membership-based task permissions:** Active organization members can create, update and deactivate tasks.
 - **Project management:** Create and manage projects within organizations.
 - **Task management:** Organize tasks and associate them with projects.
-- **Tenant isolation:** Prevent users from accessing resources belonging to organizations they are not authorized to access.
+- **Tenant isolation:** Organization membership is verified before accessing organization-scoped resources.
+- **Referential integrity:** Composite foreign keys ensure tasks cannot reference projects belonging to another organization.
 - **Case-insensitive email uniqueness:** Database-enforced uniqueness regardless of email casing.
 - **Database migrations:** Schema versioning and management with Alembic.
 - **Health checks:** Application and database readiness endpoints.
@@ -229,7 +231,13 @@ Stop the test database:
 docker compose -f compose.test.yml down
 ```
 
-The integration test configuration validates the database connection to prevent accidentally running tests against a non-test database.
+Integration tests cover:
+
+- Database persistence and transaction behavior.
+- Multi-tenant read and write isolation.
+- JWT authentication and membership revocation.
+- Project-task referential integrity.
+- Database constraints and migration behavior.
 
 ## Security and Reliability
 
@@ -255,6 +263,9 @@ Some implementation decisions are particularly relevant to the project's design:
 - **Membership-based authorization:** Access to organization resources depends on current membership, not only on token validity.
 - **Migration-aware container startup:** Alembic migrations run before Uvicorn starts, with an environment variable available to disable automatic migrations.
 - **Non-root containers:** The API runs under a dedicated unprivileged user.
+- **Composite foreign keys:** Database-level constraints enforce project and organization consistency for tasks.
+- **Soft deletion:** Projects and tasks support deactivation while preserving historical data.
+- **Transactional testing:** Integration tests use PostgreSQL transactions and savepoints to isolate test data.
 
 ## Project Status
 
