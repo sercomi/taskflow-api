@@ -34,8 +34,8 @@ router = APIRouter(
     response_model=list[TaskResponse],
 )
 async def list_project_tasks(
-    organization_id: int,
-    project_id: int,
+    organization_id: Annotated[int, Path(gt=0)],
+    project_id: Annotated[int, Path(gt=0)],
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
     status_filter: Annotated[TaskStatus | None, Query(alias="status")] = None,
@@ -56,9 +56,9 @@ async def list_project_tasks(
         )
         return [TaskResponse.model_validate(task) for task in tasks]
     except OrganizationNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ProjectNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get(

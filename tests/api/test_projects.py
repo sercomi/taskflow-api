@@ -342,3 +342,14 @@ def test_deactivate_project_endpoint_organization_not_found(
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Organization not found"}
+
+
+def test_create_project_endpoint_invalid_organization_id(
+    projects_client: TestClient,
+) -> None:
+    response = projects_client.post(
+        "/api/v1/organizations/0/projects",
+        json={"name": "Backend API"},
+    )
+
+    assert response.status_code == 422

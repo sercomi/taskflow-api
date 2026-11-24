@@ -28,6 +28,11 @@ class Project(Base):
             "slug",
             name="uq_project_organization_slug",
         ),
+        UniqueConstraint(
+            "id",
+            "organization_id",
+            name="uq_project_id_organization",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -68,6 +73,12 @@ class Project(Base):
 
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="project",
+        primaryjoin=(
+            "and_("
+            "Project.id == foreign(Task.project_id), "
+            "Project.organization_id == Task.organization_id"
+            ")"
+        ),
         cascade="all, delete-orphan",
         passive_deletes=True,
     )

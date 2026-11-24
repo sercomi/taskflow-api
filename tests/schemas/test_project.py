@@ -33,3 +33,13 @@ def test_project_update_rejects_empty_payload() -> None:
 def test_project_update_rejects_extra_fields() -> None:
     with pytest.raises(ValidationError):
         ProjectUpdate(unknown="value")  # type: ignore[call-arg]
+
+
+def test_project_update_accepts_multiple_fields() -> None:
+    update = ProjectUpdate(
+        name="New project",
+        description="New description",
+    )
+
+    assert update.name == "New project"
+    assert update.description == "New description"

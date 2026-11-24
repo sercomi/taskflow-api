@@ -14,6 +14,7 @@ from app.schemas.organization_member import (
     OrganizationMemberUpdate,
 )
 from app.services.exceptions import (
+    DuplicateOrganizationMemberError,
     MemberNotFoundError,
     OrganizationNotFoundError,
     OrganizationOwnerError,
@@ -163,7 +164,7 @@ async def add_organization_member_endpoint(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
         ) from None
-    except ValueError:
+    except DuplicateOrganizationMemberError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="User is already a member",
@@ -211,7 +212,7 @@ async def update_organization_member_endpoint(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",
         ) from None
-    except ValueError:
+    except OrganizationOwnerError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Cannot change the owner's role",
