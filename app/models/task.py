@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     String,
     Text,
     func,
@@ -38,6 +39,15 @@ class TaskPriority(StrEnum):
 class Task(Base):
     __tablename__ = "tasks"
 
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "organization_id"],
+            ["projects.id", "projects.organization_id"],
+            name="fk_task_project_organization",
+            ondelete="CASCADE",
+        ),
+    )
+
     id: Mapped[int] = mapped_column(primary_key=True)
 
     organization_id: Mapped[int] = mapped_column(
@@ -47,7 +57,6 @@ class Task(Base):
     )
 
     project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -123,6 +132,12 @@ class Task(Base):
 
     project: Mapped["Project"] = relationship(
         back_populates="tasks",
+        primaryjoin=(
+            "and_("
+            "foreign(Task.project_id) == Project.id, "
+            "Task.organization_id == Project.organization_id"
+            ")"
+        ),
     )
 
     assignee: Mapped["User | None"] = relationship(

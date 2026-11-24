@@ -176,3 +176,16 @@ def test_update_profile_does_not_allow_sensitive_fields(
     assert current_user.is_active is True
 
     mock_session.commit.assert_not_awaited()
+
+
+def test_update_profile_empty_payload(
+    users_client: TestClient,
+    mock_session: AsyncMock,
+) -> None:
+    response = users_client.patch(
+        "/api/v1/users/me",
+        json={},
+    )
+
+    assert response.status_code == 422
+    mock_session.commit.assert_not_awaited()

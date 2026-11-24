@@ -6,6 +6,7 @@ from app.api.v1.endpoints import organizations as organizations_endpoint
 from app.models.organization import Organization, OrganizationRole
 from app.models.user import User
 from app.services.exceptions import (
+    DuplicateOrganizationMemberError,
     MemberNotFoundError,
     OrganizationNotFoundError,
     OrganizationOwnerError,
@@ -389,7 +390,7 @@ def test_add_organization_member_success(
         (OrganizationNotFoundError("Organization not found"), 404),
         (UserNotFoundError("User not found"), 404),
         (PermissionError("Insufficient permissions"), 403),
-        (ValueError("User is already a member"), 409),
+        (DuplicateOrganizationMemberError("User is already a member"), 409),
     ],
 )
 def test_add_organization_member_errors(
@@ -447,7 +448,7 @@ def test_update_organization_member_role_success(
         (OrganizationNotFoundError("Organization not found"), 404),
         (MemberNotFoundError("Member not found"), 404),
         (PermissionError("Only the owner can update member roles"), 403),
-        (ValueError("Cannot change the owner's role"), 409),
+        (OrganizationOwnerError("Cannot change the owner's role"), 409),
     ],
 )
 def test_update_organization_member_role_errors(

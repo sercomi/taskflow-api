@@ -70,11 +70,6 @@ def test_task_update_rejects_invalid_assignee_id() -> None:
         TaskUpdate(assignee_id=0)
 
 
-def test_update_task_rejects_null_title() -> None:
-    with pytest.raises(ValidationError, match="Field cannot be null"):
-        TaskUpdate(title=None)
-
-
 @pytest.mark.parametrize(
     "field",
     ["title", "status", "priority"],
@@ -89,3 +84,17 @@ def test_task_update_rejects_null_non_nullable_fields(
 def test_task_update_rejects_empty_payload() -> None:
     with pytest.raises(ValidationError):
         TaskUpdate()
+
+
+def test_task_create_allows_nullable_fields() -> None:
+    task_data = TaskCreate(
+        project_id=1,
+        title="Implement authentication",
+        description=None,
+        assignee_id=None,
+        due_date=None,
+    )
+
+    assert task_data.description is None
+    assert task_data.assignee_id is None
+    assert task_data.due_date is None
