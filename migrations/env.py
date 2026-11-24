@@ -1,4 +1,5 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
 import app.models  # noqa: F401
@@ -14,10 +15,15 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option(
-    "sqlalchemy.url",
-    settings.database_url.render_as_string(hide_password=False),
+test_database_url = os.getenv("TEST_DATABASE_URL")
+
+database_url = (
+    test_database_url
+    if test_database_url
+    else settings.database_url.render_as_string(hide_password=False)
 )
+
+config.set_main_option("sqlalchemy.url", database_url)
 
 target_metadata = Base.metadata
 
@@ -55,10 +61,11 @@ async def run_async_migrations() -> None:
         poolclass=pool.NullPool,
     )
 
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-
-    await connectable.dispose()
+    try:
+        async with connectable.connect() as connection:
+            await connection.run_sync(do_run_migrations)
+    finally:
+        await connectable.dispose()
 
 
 def run_migrations_online() -> None:

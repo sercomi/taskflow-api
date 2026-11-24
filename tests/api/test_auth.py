@@ -1,6 +1,8 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt
+import pytest
 from app.core.config import settings
 from app.models.user import User
 from fastapi.testclient import TestClient
@@ -54,9 +56,18 @@ def test_register_user_success(
     mock_session.refresh.assert_awaited_once_with(created_user)
 
 
+@pytest.mark.parametrize(
+    "email",
+    [
+        "test@example.com",
+        "TEST@EXAMPLE.COM",
+        "Test@Example.com",
+    ],
+)
 def test_register_user_duplicate_email(
     auth_client: TestClient,
     mock_session: AsyncMock,
+    email: str,
 ) -> None:
     result = MagicMock()
     result.scalar_one_or_none.return_value = User(
@@ -69,7 +80,7 @@ def test_register_user_duplicate_email(
     response = auth_client.post(
         "/api/v1/auth/register",
         json={
-            "email": "test@example.com",
+            "email": email,
             "password": "StrongPassword123!",
         },
     )
@@ -102,7 +113,44 @@ def test_register_user_short_password(auth_client: TestClient) -> None:
     assert response.status_code == 422
 
 
+@pytest.mark.parametrize(
+    ("constraint_name", "expected_detail"),
+    [
+        ("ix_users_email", "Email already registered"),
+        ("users_username_key", "Username already registered"),
+    ],
+)
 def test_register_user_integrity_error(
+    auth_client: TestClient,
+    mock_session: AsyncMock,
+    constraint_name: str,
+    expected_detail: str,
+) -> None:
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    mock_session.execute.return_value = result
+
+    mock_session.commit.side_effect = IntegrityError(
+        "INSERT",
+        {},
+        SimpleNamespace(constraint_name=constraint_name),
+    )
+
+    response = auth_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "test@example.com",
+            "username": "testuser",
+            "password": "StrongPassword123!",
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == expected_detail
+    mock_session.rollback.assert_awaited_once()
+
+
+def test_register_user_unknown_integrity_error(
     auth_client: TestClient,
     mock_session: AsyncMock,
 ) -> None:
@@ -113,19 +161,19 @@ def test_register_user_integrity_error(
     mock_session.commit.side_effect = IntegrityError(
         "INSERT",
         {},
-        Exception("Unique constraint violation"),
+        SimpleNamespace(constraint_name="unknown_constraint"),
     )
 
-    response = auth_client.post(
-        "/api/v1/auth/register",
-        json={
-            "email": "test@example.com",
-            "password": "StrongPassword123!",
-        },
-    )
+    with pytest.raises(IntegrityError):
+        auth_client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "test@example.com",
+                "username": "testuser",
+                "password": "StrongPassword123!",
+            },
+        )
 
-    assert response.status_code == 409
-    assert response.json()["detail"] == "Email already registered"
     mock_session.rollback.assert_awaited_once()
 
 
