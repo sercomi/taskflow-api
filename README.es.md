@@ -11,10 +11,12 @@ TaskFlow proporciona un espacio de trabajo basado en organizaciones donde los us
 - **Autenticación JWT:** Registro e inicio de sesión seguros mediante tokens de acceso.
 - **Arquitectura multi-tenant:** Los usuarios pueden pertenecer a varias organizaciones.
 - **Gestión de organizaciones:** Creación de organizaciones y administración de membresías.
-- **Control de acceso basado en roles:** Roles a nivel de organización, incluyendo propietarios y miembros.
+- **Control de acceso basado en roles:** Roles a nivel de organización (OWNER, ADMIN y MEMBER) para la gestión de membresías.
+- **Permisos de tareas basados en membresía:** Los miembros activos de una organización pueden crear, actualizar y desactivar tareas.
 - **Gestión de proyectos:** Creación y administración de proyectos dentro de las organizaciones.
 - **Gestión de tareas:** Organización de tareas y asociación con proyectos.
 - **Aislamiento multi-tenant:** Impide el acceso a recursos de organizaciones para las que el usuario no tiene autorización.
+- **Integridad referencial:** Las claves foráneas compuestas impiden asociar tareas con proyectos pertenecientes a otras organizaciones.
 - **Emails únicos sin distinción de mayúsculas:** Unicidad garantizada directamente por la base de datos.
 - **Migraciones de base de datos:** Control y evolución del esquema mediante Alembic.
 - **Health checks:** Endpoints para comprobar el estado de la aplicación y la disponibilidad de la base de datos.
@@ -203,7 +205,13 @@ uv run mypy app
 
 TaskFlow incluye tests unitarios, de API y de integración.
 
-Los tests de integración utilizan una base de datos PostgreSQL independiente para validar el comportamiento real de la persistencia, la integridad de los datos y el aislamiento multi-tenant.
+Los tests de integración cubren:
+
+- Persistencia de datos y comportamiento transaccional.
+- Aislamiento multi-tenant en operaciones de lectura y escritura.
+- Autenticación JWT y revocación de acceso tras eliminar membresías.
+- Integridad referencial entre proyectos y tareas.
+- Restricciones de base de datos e integridad de los datos.
 
 ### Iniciar la base de datos de tests
 
@@ -255,6 +263,9 @@ Algunas decisiones de implementación relevantes para el diseño del proyecto:
 - **Autorización basada en membresías:** El acceso a los recursos de una organización depende de la membresía actual del usuario, no únicamente de la validez del token.
 - **Arranque de contenedores con migraciones:** Alembic ejecuta las migraciones antes de iniciar Uvicorn. Existe una variable de entorno que permite desactivar las migraciones automáticas.
 - **Contenedores sin privilegios:** La API se ejecuta con un usuario dedicado sin privilegios de administrador.
+- **Claves foráneas compuestas:** Las restricciones a nivel de base de datos garantizan la coherencia entre proyectos y organizaciones al asociar tareas.
+- **Soft deletion:** Los proyectos y las tareas permiten su desactivación sin eliminar los datos históricos.
+- **Testing transaccional:** Los tests de integración utilizan transacciones y savepoints de PostgreSQL para aislar los datos de cada prueba.
 
 ## Estado del proyecto
 
