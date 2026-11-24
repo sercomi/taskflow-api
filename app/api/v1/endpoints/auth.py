@@ -36,9 +36,19 @@ async def register(
         user = await create_user(session, user_data)
     except IntegrityError as exc:
         await session.rollback()
+
+        constraint_name = _get_constraint_name(exc)
+
+        if constraint_name == "ix_users_email":
+            detail = "Email already registered"
+        elif constraint_name == "users_username_key":
+            detail = "Username already registered"
+        else:
+            raise
+
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
+            detail=detail,
         ) from exc
 
     return UserResponse.model_validate(user)
@@ -72,3 +82,29 @@ async def login(
     access_token = create_access_token(subject=str(user.id))
 
     return TokenResponse(access_token=access_token)
+
+
+def _get_constraint_name(exc: IntegrityError) -> str | None:
+    error: BaseException | None = exc.orig
+
+    while error is not None:
+        constraint_name: object = getattr(error, "constraint_name", None)
+
+        if isinstance(constraint_name, str):
+            return constraint_name
+
+        diag: object = getattr(error, "diag", None)
+
+        if diag is not None:
+            diag_constraint_name: object = getattr(
+                diag,
+                "constraint_name",
+                None,
+            )
+
+            if isinstance(diag_constraint_name, str):
+                return diag_constraint_name
+
+        error = error.__cause__ or error.__context__
+
+    return None

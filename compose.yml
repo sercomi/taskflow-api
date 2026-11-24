@@ -9,14 +9,16 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      POSTGRES_HOST: db
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         condition: service_healthy
 
   db:
-    image: postgres:17-alpine
+    image: postgres:17.12-alpine3.24
     container_name: taskflow-db
     restart: unless-stopped
     environment:

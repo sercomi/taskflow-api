@@ -1,0 +1,65 @@
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Git
+.git/
+.gitignore
+
+# IDE and editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Test and development files
+tests/
+.pytest_cache/
+```
+
+### Por qué estas exclusiones
+
+- `.env`: evita introducir secretos en la imagen.
+- `.venv/`: evita copiar dependencias locales.
+- `.git/`: reduce el contexto y evita incluir historial.
+- `tests/`: no necesitamos los tests en la imagen de producción.
+- Cachés y artefactos: reducen el tamaño del contexto.
+
+Mantenemos `pyproject.toml`, `uv.lock` y `app/`, que son necesarios para construir la imagen.
+
+### Paso 2. Reconstruir
+
+```bash
+docker compose build --no-cache api
+```
+
+Si termina correctamente, cerramos `DOCKER-005`.

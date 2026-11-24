@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy import Boolean, DateTime, Index, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.base import Base
@@ -18,8 +18,6 @@ class User(Base):
 
     email: Mapped[str] = mapped_column(
         String(255),
-        unique=True,
-        index=True,
         nullable=False,
     )
 
@@ -62,3 +60,10 @@ class User(Base):
         back_populates="assignee",
         passive_deletes=True,
     )
+
+
+Index(
+    "ix_users_email",
+    func.lower(User.email),
+    unique=True,
+)
